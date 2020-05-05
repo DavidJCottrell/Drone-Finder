@@ -7,50 +7,35 @@ from drones_list import L
 from contains import contains
 
 def createDrones(num):
-    DroneCoords = []
+    DroneInfo = []
     for _ in range(0, num):
         x = random.randrange(0, 1200) #Random X coordinate between 0 and 1200
         y = random.randrange(0, 700) #Random Y coordinate between 0 and 700
         RCS = L[random.randrange(0, len(L))][5] #Get a random radar cross section from the drone list
-        DroneCoords.append( [[x, y], RCS] )
-    return DroneCoords
+        DroneInfo.append( [ (x, y), RCS, ["", ""], False ] )
+    return DroneInfo
 
-def getMakeModel(RCS):
-    #Linear search to find its name using its RCS
-    for listDrone in L:
-        if listDrone[5] == RCS:
-            return [listDrone[0], listDrone[1], listDrone[5]]
-
-def binarySearch(sortedDroneList, l, r, RCS): 
+def getMakeModel(sortedDroneList, l, r, RCS): 
     while l <= r: 
         mid = l + (r - l)//2
-        # Check if x is present at mid 
         if sortedDroneList[mid][5] == RCS:
-            return [sortedDroneList[mid][0], sortedDroneList[mid][1], sortedDroneList[mid][5]]
-        # If x is greater, ignore left half 
+            return [sortedDroneList[mid][0], sortedDroneList[mid][1]]
         elif sortedDroneList[mid][5] < RCS: 
             l = mid + 1
-        # If x is smaller, ignore right half 
         else: 
             r = mid - 1
-    # If we reach here, then the element was not present 
-    return ["Not found", "Not found", -1]
+    raise ValueError("Error: RCS not found")
 
+# Determine if drone is within polygons and add its coordinates and name to the appropriate arrays
 def findDrones(sortedDroneList, Drones):
-    # Determine if drone is within polygons and add its coordinates and name to the appropriate arrays
     for Drone in Drones:
         # coordinates inside a polygon
         if contains(AirpoirtMain, np.array(Drone[0])) or contains(AirpoirtRunway, np.array(Drone[0])):
-            trueXs.append(Drone[0][0])
-            trueYs.append(Drone[0][1])
-            trueDroneNames.append(binarySearch(sortedDroneList, 0, len(sortedDroneList)-1, Drone[1])) #Drone[1] -> RCS
-            #trueDroneNames.append(getMakeModel(Drone[1])) #Drone[1] -> RCS
+            Drone[3] = True
         # coordinates outside a polygon
         else:
-            falseXs.append(Drone[0][0])
-            falseYs.append(Drone[0][1])
-            falseDroneNames.append(binarySearch(sortedDroneList, 0, len(sortedDroneList)-1, Drone[1])) #Drone[1] -> RCS
-            #falseDroneNames.append(getMakeModel(Drone[1])) #Drone[1] -> RCS
+            Drone[3] = False
+        Drone[2] = getMakeModel(sortedDroneList, 0, len(sortedDroneList)-1, Drone[1])
 
 
 def showAnnotation(ind, graph, list, annotation):
@@ -58,20 +43,21 @@ def showAnnotation(ind, graph, list, annotation):
     annotation.xy = pos
     if list == "trueList":
         text = "Within airport\nDrone make: {}\nDrone model: {}\nRadar Cross Section: {}\nCoordinates: ({}, {})".format(
-            trueDroneNames[int(ind["ind"])][0],
-            trueDroneNames[int(ind["ind"])][1],
-            trueDroneNames[int(ind["ind"])][2], 
-            trueXs[int(ind["ind"])],
-            trueYs[int(ind["ind"])]
+            Drones[int(ind["ind"])][2][0],
+            Drones[int(ind["ind"])][2][1],
+            Drones[int(ind["ind"])][1],
+            Drones[int(ind["ind"])][0][0],
+            Drones[int(ind["ind"])][0][1]
         )
     else:
         text = "Outside airport\nDrone make: {}\nDrone model: {}\nRadar Cross Section: {}\nCoordinates: ({}, {})".format(
-            falseDroneNames[int(ind["ind"])][0], 
-            falseDroneNames[int(ind["ind"])][1], 
-            falseDroneNames[int(ind["ind"])][2], 
-            falseXs[int(ind["ind"])], 
-            falseYs[int(ind["ind"])]
+            Drones[int(ind["ind"])][2][0],
+            Drones[int(ind["ind"])][2][1],
+            Drones[int(ind["ind"])][1],
+            Drones[int(ind["ind"])][0][0],
+            Drones[int(ind["ind"])][0][1]
         )
+
     annotation.set_text(text)
 
 
@@ -99,7 +85,7 @@ def hover(event, figure, axes, annotation, scatter1, scatter2):
     figure.canvas.draw_idle()
 
 
-def showPlot(AirpoirtMain, AirpoirtRunway):
+def showPlot(AirpoirtMain, AirpoirtRunway, Drones):
     # Prepare polygon data for matplotlib
     AirpoirtMain = AirpoirtMain.tolist()
     AirpoirtMain.append(AirpoirtMain[0])
@@ -113,13 +99,24 @@ def showPlot(AirpoirtMain, AirpoirtRunway):
     figure = plt.figure()
     axes = figure.add_subplot()
 
-    scatter1 = axes.scatter(trueXs, trueYs, color='red', s=10) # Add scatter graph for drones found to be within either aiport polygon
-    scatter2 = axes.scatter(falseXs, falseYs, color='blue', s=10) # Add scatter graph for drones not in either aiport polygon
+    insideCoords = [[], []]
+    outsideCoords = [[], []]
+
+    for Drone in Drones:
+        if(Drone[3] == True):
+            insideCoords[0].append(Drone[0][0])
+            insideCoords[1].append(Drone[0][1])
+        else:
+            outsideCoords[0].append(Drone[0][0])
+            outsideCoords[1].append(Drone[0][1])
+
+    scatter1 = axes.scatter(insideCoords[0], insideCoords[1], color='red', s=10) # Add scatter graph for drones found to be within either airport polygon
+    scatter2 = axes.scatter(outsideCoords[0], outsideCoords[1], color='blue', s=10) # Add scatter graph for drones not in either airport polygon
 
     axes.plot(mainX, mainY, RunwayX, RunwayY) # Draw polygons
 
     annotation = axes.annotate("", xy=(0,0), xytext=(-100,20), textcoords="offset points", color=(1, 1, 1), bbox=dict(fc=(0, 0, 0, 1), ec='none', pad=0.5, boxstyle="round"), arrowprops=dict(arrowstyle="->")) # Annotation style
-    annotation.set_visible(False) # Hide annoation
+    annotation.set_visible(False) # Hide annotation
 
     figure.canvas.mpl_connect("motion_notify_event", lambda event: hover(event, figure, axes, annotation, scatter1, scatter2) ) # Listen for hover events
     plt.show() # Show plot
@@ -128,22 +125,29 @@ def showPlot(AirpoirtMain, AirpoirtRunway):
 def timeAnalysis(sortedDroneList):
     timeList = []
     lengthList = []
+    averageTimeList = []
 
-    for i in range(0, 550):
-        Drones = createDrones(i) # Create drones
-        start_time = perf_counter()
-        findDrones(sortedDroneList, Drones) # Time this
-        end_time = perf_counter()
-        time = 1000 * (end_time - start_time) # ms
-        print("Iteration: ", i, " took: ", time, " ms")
-        timeList.append(time)
-        lengthList.append(i)
+    #0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200
+    for i in range(0, 11):
+        for _ in range(0, 500):
+            Drones = createDrones(i*20)
 
-    plt.plot(lengthList, timeList, '--bo')
+            start_time = perf_counter()
+            findDrones(sortedDroneList, Drones)
+            end_time = perf_counter()
+
+            time = 1000 * (end_time - start_time)
+            timeList.append(time)
+
+        averageTimeList.append(sum(timeList) / len(timeList))
+        lengthList.append(i*20)
+        print("Average for", i*20, "drones is", sum(timeList) / len(timeList))
+        timeList = []
+
+    plt.plot(lengthList, averageTimeList, '--bo')
     plt.xlabel('Length of Drones list')
     plt.ylabel('Time (ms)')
     plt.show()
-
 
 AirpoirtMain = np.array(( 
     [100, 650], [375, 675], [400, 600], [525, 625], [775, 575], [1050, 550], [1050, 350], [700, 200], [0, 200], [-50, 350], [25, 500], [100, 550] 
@@ -153,19 +157,13 @@ AirpoirtRunway = np.array((
     [-100, 150], [-175, 75], [-100, 0], [1150, 0], [1200, 75], [1125, 150] 
 )) # Polygon for runway
 
-trueXs = [] # X coordinate for coordinates inside a polygon 
-trueYs = [] # Y coordinate for coordinates inside a polygon 
-trueDroneNames = [] # Make, Model and RCS for coordinates inside a polygon  
-
-falseXs = [] # X coordinate for coordinates outside a polygon 
-falseYs = [] # Y coordinate for coordinates outside a polygon 
-falseDroneNames = [] # Make, Model and RCS for coordinates outside a polygon  
-
-
-#Drones = createDrones(30) # Create 30 drones
 
 sortedDroneList = sorted(L, key=lambda x: x[5])
-timeAnalysis(sortedDroneList)
 
-#findDrones(sortedDroneList, Drones)
-#showPlot(AirpoirtMain, AirpoirtRunway)
+#timeAnalysis(sortedDroneList)
+
+Drones = createDrones(30) # Create 30 drones
+
+findDrones(sortedDroneList, Drones)
+    
+showPlot(AirpoirtMain, AirpoirtRunway, Drones)
